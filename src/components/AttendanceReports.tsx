@@ -1,0 +1,241 @@
+import { useState, useEffect } from "react";
+import { Calendar, Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+
+interface Class {
+  id: string;
+  name: string;
+}
+
+interface AttendanceSession {
+  id: string;
+  session_date: string;
+  created_at: string;
+}
+
+interface AttendanceRecord {
+  id: string;
+  status: string;
+  confidence: number | null;
+  student: {
+    name: string;
+    student_id: string;
+  };
+}
+
+export function AttendanceReports() {
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string>("");
+  const [sessions, setSessions] = useState<AttendanceSession[]>([]);
+  const [selectedSession, setSelectedSession] = useState<string>("");
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [stats, setStats] = useState({ total: 0, present: 0, absent: 0, late: 0 });
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      const { data, error } = await supabase
+        .from("classes")
+        .select("id, name")
+        .order("name");
+      
+      if (!error) setClasses(data || []);
+    };
+    fetchClasses();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedClass) {
+      setSessions([]);
+      setSelectedSession("");
+      return;
+    }
+
+    const fetchSessions = async () => {
+      const { data, error } = await supabase
+        .from("attendance_sessions")
+        .select("id, session_date, created_at")
+        .eq("class_id", selectedClass)
+        .order("session_date", { ascending: false });
+      
+      if (!error) {
+        setSessions(data || []);
+        setSelectedSession("");
+        setRecords([]);
+      }
+    };
+    fetchSessions();
+  }, [selectedClass]);
+
+  useEffect(() => {
+    if (!selectedSession) {
+      setRecords([]);
+      return;
+    }
+
+    const fetchRecords = async () => {
+      const { data, error } = await supabase
+        .from("attendance_records")
+        .select(`
+          id,
+          status,
+          confidence,
+          student:students(name, student_id)
+        `)
+        .eq("session_id", selectedSession);
+      
+      if (error) {
+        toast({ title: "Error", description: "Failed to load records", variant: "destructive" });
+      } else {
+        const formattedRecords = (data || []).map((r: any) => ({
+          id: r.id,
+          status: r.status,
+          confidence: r.confidence,
+          student: r.student
+        }));
+        setRecords(formattedRecords);
+        
+        const present = formattedRecords.filter(r => r.status === "present").length;
+        const absent = formattedRecords.filter(r => r.status === "absent").length;
+        const late = formattedRecords.filter(r => r.status === "late").length;
+        setStats({ total: formattedRecords.length, present, absent, late });
+      }
+    };
+    fetchRecords();
+  }, [selectedSession, toast]);
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold flex items-center gap-2">
+        <BarChart3 className="w-6 h-6 text-primary" />
+        Attendance Reports
+      </h2>
+
+      {/* Filters */}
+      <div className="glass-panel p-4 flex flex-wrap gap-4">
+        <div className="flex-1 min-w-[200px]">
+          <label className="text-sm font-medium text-muted-foreground mb-2 block">Class</label>
+          <Select value={selectedClass} onValueChange={setSelectedClass}>
+            <SelectTrigger className="bg-secondary/50">
+              <SelectValue placeholder="Select class..." />
+            </SelectTrigger>
+            <SelectContent>
+              {classes.map((cls) => (
+                <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="flex-1 min-w-[200px]">
+          <label className="text-sm font-medium text-muted-foreground mb-2 block">Session Date</label>
+          <Select value={selectedSession} onValueChange={setSelectedSession} disabled={!selectedClass}>
+            <SelectTrigger className="bg-secondary/50">
+              <SelectValue placeholder="Select date..." />
+            </SelectTrigger>
+            <SelectContent>
+              {sessions.map((session) => (
+                <SelectItem key={session.id} value={session.id}>
+                  {formatDate(session.session_date)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Stats */}
+      {selectedSession && records.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="glass-panel p-4 text-center">
+            <Users className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-xs text-muted-foreground">Total Students</div>
+          </div>
+          <div className="glass-panel p-4 text-center">
+            <CheckCircle className="w-8 h-8 text-primary mx-auto mb-2" />
+            <div className="text-2xl font-bold text-primary">{stats.present}</div>
+            <div className="text-xs text-muted-foreground">Present</div>
+          </div>
+          <div className="glass-panel p-4 text-center">
+            <XCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
+            <div className="text-2xl font-bold text-destructive">{stats.absent}</div>
+            <div className="text-xs text-muted-foreground">Absent</div>
+          </div>
+          <div className="glass-panel p-4 text-center">
+            <Calendar className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+            <div className="text-2xl font-bold text-yellow-500">{stats.late}</div>
+            <div className="text-xs text-muted-foreground">Late</div>
+          </div>
+        </div>
+      )}
+
+      {/* Records */}
+      {selectedSession && records.length > 0 ? (
+        <div className="glass-panel p-4">
+          <h3 className="font-semibold mb-4">Attendance Details</h3>
+          <div className="space-y-2">
+            {records.map((record) => (
+              <div
+                key={record.id}
+                className={`flex items-center justify-between p-3 rounded-lg border ${
+                  record.status === "present" 
+                    ? "bg-primary/10 border-primary/30" 
+                    : record.status === "late"
+                    ? "bg-yellow-500/10 border-yellow-500/30"
+                    : "bg-destructive/10 border-destructive/30"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  {record.status === "present" ? (
+                    <CheckCircle className="w-5 h-5 text-primary" />
+                  ) : record.status === "late" ? (
+                    <Calendar className="w-5 h-5 text-yellow-500" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-destructive" />
+                  )}
+                  <div>
+                    <div className="font-medium">{record.student.name}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{record.student.student_id}</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-sm font-medium capitalize ${
+                    record.status === "present" ? "text-primary" : 
+                    record.status === "late" ? "text-yellow-500" : "text-destructive"
+                  }`}>
+                    {record.status}
+                  </div>
+                  {record.confidence && (
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {record.confidence.toFixed(0)}% confidence
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : selectedSession ? (
+        <div className="glass-panel p-12 text-center">
+          <p className="text-muted-foreground">No attendance records for this session.</p>
+        </div>
+      ) : (
+        <div className="glass-panel p-12 text-center">
+          <p className="text-muted-foreground">Select a class and date to view attendance records.</p>
+        </div>
+      )}
+    </div>
+  );
+}
