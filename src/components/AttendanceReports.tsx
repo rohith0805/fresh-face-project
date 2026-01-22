@@ -1,18 +1,17 @@
 import { useState, useEffect } from "react";
-import { Calendar, Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
+import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface Class {
   id: string;
   name: string;
-}
-
-interface AttendanceSession {
-  id: string;
-  session_date: string;
-  created_at: string;
 }
 
 interface AttendanceRecord {
@@ -28,10 +27,10 @@ interface AttendanceRecord {
 export function AttendanceReports() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>("");
-  const [sessions, setSessions] = useState<AttendanceSession[]>([]);
-  const [selectedSession, setSelectedSession] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [stats, setStats] = useState({ total: 0, present: 0, absent: 0, late: 0 });
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
