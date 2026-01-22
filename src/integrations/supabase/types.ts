@@ -91,26 +91,41 @@ export type Database = {
       classes: {
         Row: {
           created_at: string
+          department: string | null
           description: string | null
+          faculty_name: string | null
           id: string
           name: string
           schedule: string | null
+          section: string | null
+          semester: number | null
+          subject: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          department?: string | null
           description?: string | null
+          faculty_name?: string | null
           id?: string
           name: string
           schedule?: string | null
+          section?: string | null
+          semester?: number | null
+          subject?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          department?: string | null
           description?: string | null
+          faculty_name?: string | null
           id?: string
           name?: string
           schedule?: string | null
+          section?: string | null
+          semester?: number | null
+          subject?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -119,27 +134,39 @@ export type Database = {
         Row: {
           class_id: string | null
           created_at: string
+          email: string | null
+          gender: string | null
           id: string
           name: string
+          phone: string | null
           photo_url: string | null
+          roll_no: string | null
           student_id: string
           updated_at: string
         }
         Insert: {
           class_id?: string | null
           created_at?: string
+          email?: string | null
+          gender?: string | null
           id?: string
           name: string
+          phone?: string | null
           photo_url?: string | null
+          roll_no?: string | null
           student_id: string
           updated_at?: string
         }
         Update: {
           class_id?: string | null
           created_at?: string
+          email?: string | null
+          gender?: string | null
           id?: string
           name?: string
+          phone?: string | null
           photo_url?: string | null
+          roll_no?: string | null
           student_id?: string
           updated_at?: string
         }
