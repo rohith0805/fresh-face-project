@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
+import { CalendarIcon, Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -46,35 +46,38 @@ export function AttendanceReports() {
   }, []);
 
   useEffect(() => {
-    if (!selectedClass) {
-      setSessions([]);
-      setSelectedSession("");
-      return;
-    }
-
-    const fetchSessions = async () => {
-      const { data, error } = await supabase
-        .from("attendance_sessions")
-        .select("id, session_date, created_at")
-        .eq("class_id", selectedClass)
-        .order("session_date", { ascending: false });
-      
-      if (!error) {
-        setSessions(data || []);
-        setSelectedSession("");
-        setRecords([]);
-      }
-    };
-    fetchSessions();
-  }, [selectedClass]);
-
-  useEffect(() => {
-    if (!selectedSession) {
+    if (!selectedClass || !selectedDate) {
       setRecords([]);
+      setStats({ total: 0, present: 0, absent: 0, late: 0 });
       return;
     }
 
     const fetchRecords = async () => {
+      setLoading(true);
+      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      
+      // First find the session for this class and date
+      const { data: sessionData, error: sessionError } = await supabase
+        .from("attendance_sessions")
+        .select("id")
+        .eq("class_id", selectedClass)
+        .eq("session_date", dateStr)
+        .maybeSingle();
+      
+      if (sessionError) {
+        toast({ title: "Error", description: "Failed to find session", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      if (!sessionData) {
+        setRecords([]);
+        setStats({ total: 0, present: 0, absent: 0, late: 0 });
+        setLoading(false);
+        return;
+      }
+
+      // Fetch attendance records for this session
       const { data, error } = await supabase
         .from("attendance_records")
         .select(`
@@ -83,7 +86,7 @@ export function AttendanceReports() {
           confidence,
           student:students(name, student_id)
         `)
-        .eq("session_id", selectedSession);
+        .eq("session_id", sessionData.id);
       
       if (error) {
         toast({ title: "Error", description: "Failed to load records", variant: "destructive" });
@@ -101,18 +104,10 @@ export function AttendanceReports() {
         const late = formattedRecords.filter(r => r.status === "late").length;
         setStats({ total: formattedRecords.length, present, absent, late });
       }
+      setLoading(false);
     };
     fetchRecords();
-  }, [selectedSession, toast]);
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric"
-    });
-  };
+  }, [selectedClass, selectedDate, toast]);
 
   return (
     <div className="space-y-6">
@@ -138,24 +133,35 @@ export function AttendanceReports() {
         </div>
         
         <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium text-muted-foreground mb-2 block">Session Date</label>
-          <Select value={selectedSession} onValueChange={setSelectedSession} disabled={!selectedClass}>
-            <SelectTrigger className="bg-secondary/50">
-              <SelectValue placeholder="Select date..." />
-            </SelectTrigger>
-            <SelectContent>
-              {sessions.map((session) => (
-                <SelectItem key={session.id} value={session.id}>
-                  {formatDate(session.session_date)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <label className="text-sm font-medium text-muted-foreground mb-2 block">Date</label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-full justify-start text-left font-normal bg-secondary/50",
+                  !selectedDate && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
       {/* Stats */}
-      {selectedSession && records.length > 0 && (
+      {selectedClass && selectedDate && records.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="glass-panel p-4 text-center">
             <Users className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
@@ -173,7 +179,7 @@ export function AttendanceReports() {
             <div className="text-xs text-muted-foreground">Absent</div>
           </div>
           <div className="glass-panel p-4 text-center">
-            <Calendar className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+            <CalendarIcon className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
             <div className="text-2xl font-bold text-yellow-500">{stats.late}</div>
             <div className="text-xs text-muted-foreground">Late</div>
           </div>
@@ -181,7 +187,11 @@ export function AttendanceReports() {
       )}
 
       {/* Records */}
-      {selectedSession && records.length > 0 ? (
+      {loading ? (
+        <div className="glass-panel p-12 text-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      ) : selectedClass && selectedDate && records.length > 0 ? (
         <div className="glass-panel p-4">
           <h3 className="font-semibold mb-4">Attendance Details</h3>
           <div className="space-y-2">
@@ -200,7 +210,7 @@ export function AttendanceReports() {
                   {record.status === "present" ? (
                     <CheckCircle className="w-5 h-5 text-primary" />
                   ) : record.status === "late" ? (
-                    <Calendar className="w-5 h-5 text-yellow-500" />
+                    <CalendarIcon className="w-5 h-5 text-yellow-500" />
                   ) : (
                     <XCircle className="w-5 h-5 text-destructive" />
                   )}
@@ -226,9 +236,9 @@ export function AttendanceReports() {
             ))}
           </div>
         </div>
-      ) : selectedSession ? (
+      ) : selectedClass && selectedDate ? (
         <div className="glass-panel p-12 text-center">
-          <p className="text-muted-foreground">No attendance records for this session.</p>
+          <p className="text-muted-foreground">No attendance records for this class and date.</p>
         </div>
       ) : (
         <div className="glass-panel p-12 text-center">
