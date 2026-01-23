@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Upload, Scan, Camera, RefreshCw, CheckCircle, XCircle } from "lucide-react";
+import { Upload, Scan, Camera, RefreshCw, CheckCircle, XCircle, Video, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,7 +35,11 @@ export function AttendanceScanner() {
   const [isScanning, setIsScanning] = useState(false);
   const [result, setResult] = useState<RecognitionResult | null>(null);
   const [attendanceMarked, setAttendanceMarked] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
 
   // Fetch classes on mount
@@ -76,6 +80,61 @@ export function AttendanceScanner() {
     };
     fetchStudents();
   }, [selectedClass, toast]);
+
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      setStream(mediaStream);
+      setIsCameraActive(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (error) {
+      console.error("Camera error:", error);
+      toast({ 
+        title: "Camera Error", 
+        description: "Could not access camera. Please allow camera permission.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const stopCamera = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsCameraActive(false);
+  }, [stream]);
+
+  const capturePhoto = useCallback(() => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        setImage(imageData);
+        setResult(null);
+        setAttendanceMarked(false);
+        stopCamera();
+      }
+    }
+  }, [stopCamera]);
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -225,13 +284,17 @@ export function AttendanceScanner() {
     setImage(null);
     setResult(null);
     setAttendanceMarked(false);
+    stopCamera();
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  }, []);
+  }, [stopCamera]);
 
   return (
     <div className="space-y-6">
+      {/* Hidden canvas for capturing */}
+      <canvas ref={canvasRef} className="hidden" />
+      
       {/* Class Selector */}
       <div className="glass-panel p-4">
         <label className="text-sm font-medium text-muted-foreground mb-2 block">
@@ -258,31 +321,68 @@ export function AttendanceScanner() {
 
       {/* Scanner */}
       <div className="glass-panel glow-border p-6">
-        {!image ? (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="relative border-2 border-dashed border-primary/30 rounded-xl p-12 cursor-pointer hover:border-primary/60 transition-colors group"
-          >
+        {isCameraActive ? (
+          <div className="space-y-6">
+            <div className="relative rounded-xl overflow-hidden bg-background/50">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-auto max-h-[400px] object-contain"
+              />
+              <div className="absolute inset-0 pointer-events-none border-4 border-primary/30 rounded-xl" />
+            </div>
+            <div className="flex gap-3 justify-center">
+              <Button variant="glow" size="lg" onClick={capturePhoto} className="gap-2">
+                <Camera className="w-5 h-5" />
+                Capture Photo
+              </Button>
+              <Button variant="outline" size="lg" onClick={stopCamera} className="gap-2">
+                <VideoOff className="w-5 h-5" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : !image ? (
+          <div className="space-y-4">
+            <div className="flex gap-4 justify-center">
+              <Button 
+                variant="glow" 
+                size="lg" 
+                onClick={startCamera}
+                className="gap-2 flex-1 max-w-[200px]"
+              >
+                <Video className="w-5 h-5" />
+                Live Camera
+              </Button>
+              <Button 
+                variant="outline" 
+                size="lg" 
+                onClick={() => fileInputRef.current?.click()}
+                className="gap-2 flex-1 max-w-[200px]"
+              >
+                <Upload className="w-5 h-5" />
+                Upload Photo
+              </Button>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={handleFileSelect}
               className="hidden"
             />
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                <Camera className="w-10 h-10 text-primary" />
+            <div className="border-2 border-dashed border-primary/30 rounded-xl p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Camera className="w-8 h-8 text-primary" />
               </div>
-              <div className="text-center">
-                <p className="text-lg font-medium text-foreground">
-                  Take or upload class photo
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Capture the entire class for face detection
-                </p>
-              </div>
+              <p className="text-lg font-medium text-foreground">
+                Take or upload class photo
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Use live camera or upload an existing image
+              </p>
             </div>
           </div>
         ) : (
