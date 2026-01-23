@@ -133,6 +133,38 @@ export function AttendanceScanner() {
     }
   };
 
+  const uploadSessionPhoto = async (sessionId: string): Promise<string | null> => {
+    if (!image) return null;
+    
+    try {
+      // Convert base64 to blob
+      const base64Data = image.split(',')[1];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/jpeg' });
+      
+      const fileName = `${sessionId}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('session-photos')
+        .upload(fileName, blob, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabase.storage
+        .from('session-photos')
+        .getPublicUrl(fileName);
+      
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error("Photo upload error:", error);
+      return null;
+    }
+  };
+
   const markAttendance = async () => {
     if (!result || !selectedClass) return;
 
@@ -148,6 +180,15 @@ export function AttendanceScanner() {
         .single();
 
       if (sessionError) throw sessionError;
+
+      // Upload session photo
+      const photoUrl = await uploadSessionPhoto(session.id);
+      if (photoUrl) {
+        await supabase
+          .from("attendance_sessions")
+          .update({ photo_url: photoUrl })
+          .eq("id", session.id);
+      }
 
       // Mark all students from the class
       const attendanceRecords = students.map(student => {
