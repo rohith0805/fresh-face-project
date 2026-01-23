@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { CalendarIcon, Users, CheckCircle, XCircle, BarChart3 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { CalendarIcon, Users, CheckCircle, XCircle, BarChart3, Upload, Image } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -31,6 +31,10 @@ export function AttendanceReports() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [stats, setStats] = useState({ total: 0, present: 0, absent: 0, late: 0 });
   const [loading, setLoading] = useState(false);
+  const [sessionPhotoUrl, setSessionPhotoUrl] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,6 +53,8 @@ export function AttendanceReports() {
     if (!selectedClass || !selectedDate) {
       setRecords([]);
       setStats({ total: 0, present: 0, absent: 0, late: 0 });
+      setSessionPhotoUrl(null);
+      setSessionId(null);
       return;
     }
 
@@ -59,7 +65,7 @@ export function AttendanceReports() {
       // First find the session for this class and date
       const { data: sessionData, error: sessionError } = await supabase
         .from("attendance_sessions")
-        .select("id")
+        .select("id, photo_url")
         .eq("class_id", selectedClass)
         .eq("session_date", dateStr)
         .maybeSingle();
@@ -73,9 +79,14 @@ export function AttendanceReports() {
       if (!sessionData) {
         setRecords([]);
         setStats({ total: 0, present: 0, absent: 0, late: 0 });
+        setSessionPhotoUrl(null);
+        setSessionId(null);
         setLoading(false);
         return;
       }
+
+      setSessionId(sessionData.id);
+      setSessionPhotoUrl(sessionData.photo_url);
 
       // Fetch attendance records for this session
       const { data, error } = await supabase
@@ -108,6 +119,40 @@ export function AttendanceReports() {
     };
     fetchRecords();
   }, [selectedClass, selectedDate, toast]);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !sessionId) return;
+
+    setUploading(true);
+    try {
+      const fileName = `${sessionId}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('session-photos')
+        .upload(fileName, file, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabase.storage
+        .from('session-photos')
+        .getPublicUrl(fileName);
+      
+      // Update session with photo URL
+      await supabase
+        .from("attendance_sessions")
+        .update({ photo_url: urlData.publicUrl })
+        .eq("id", sessionId);
+      
+      setSessionPhotoUrl(urlData.publicUrl);
+      toast({ title: "Success", description: "Photo uploaded successfully!" });
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({ title: "Error", description: "Failed to upload photo", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -159,6 +204,51 @@ export function AttendanceReports() {
           </Popover>
         </div>
       </div>
+
+      {/* Session Photo */}
+      {sessionId && (
+        <div className="glass-panel p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Image className="w-5 h-5 text-primary" />
+              Session Photo
+            </h3>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                {uploading ? "Uploading..." : sessionPhotoUrl ? "Replace Photo" : "Upload Photo"}
+              </Button>
+            </div>
+          </div>
+          {sessionPhotoUrl ? (
+            <div className="rounded-xl overflow-hidden bg-background/50">
+              <img
+                src={sessionPhotoUrl}
+                alt="Session photo"
+                className="w-full h-auto max-h-[400px] object-contain"
+              />
+            </div>
+          ) : (
+            <div className="border-2 border-dashed border-border rounded-xl p-8 text-center">
+              <Image className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No photo uploaded for this session</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       {selectedClass && selectedDate && records.length > 0 && (
