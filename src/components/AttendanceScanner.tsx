@@ -242,12 +242,17 @@ export function AttendanceScanner() {
       
       if (uploadError) throw uploadError;
       
-      const { data: urlData } = supabase.storage
+      // Create signed URL (valid for 1 year)
+      const { data: signedData, error: signedError } = await supabase.storage
         .from('session-photos')
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 31536000);
       
-      // Add cache-busting timestamp
-      return `${urlData.publicUrl}?t=${Date.now()}`;
+      if (signedError || !signedData) {
+        console.error("Signed URL error:", signedError);
+        return null;
+      }
+      
+      return signedData.signedUrl;
     } catch (error) {
       console.error("Photo upload error:", error);
       return null;
