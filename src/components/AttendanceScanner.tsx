@@ -90,6 +90,12 @@ export function AttendanceScanner() {
       setIsCameraActive(true);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        // Wait for video to be ready
+        await new Promise<void>((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => resolve();
+          }
+        });
       }
     } catch (error) {
       console.error("Camera error:", error);
@@ -113,6 +119,17 @@ export function AttendanceScanner() {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
+      
+      // Check if video has valid dimensions
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        toast({
+          title: "Camera not ready",
+          description: "Please wait for the camera to fully load and try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
@@ -125,7 +142,7 @@ export function AttendanceScanner() {
         stopCamera();
       }
     }
-  }, [stopCamera]);
+  }, [stopCamera, toast]);
 
   // Cleanup camera on unmount
   useEffect(() => {
