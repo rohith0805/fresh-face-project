@@ -137,13 +137,16 @@ export function AttendanceReports() {
         .from('session-photos')
         .getPublicUrl(fileName);
       
+      // Add cache-busting timestamp
+      const photoUrlWithTimestamp = `${urlData.publicUrl}?t=${Date.now()}`;
+      
       // Update session with photo URL
       await supabase
         .from("attendance_sessions")
-        .update({ photo_url: urlData.publicUrl })
+        .update({ photo_url: photoUrlWithTimestamp })
         .eq("id", sessionId);
       
-      setSessionPhotoUrl(urlData.publicUrl);
+      setSessionPhotoUrl(photoUrlWithTimestamp);
       toast({ title: "Success", description: "Photo uploaded successfully!" });
     } catch (error) {
       console.error("Upload error:", error);

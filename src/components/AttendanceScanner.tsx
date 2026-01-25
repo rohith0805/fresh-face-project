@@ -217,7 +217,8 @@ export function AttendanceScanner() {
         .from('session-photos')
         .getPublicUrl(fileName);
       
-      return urlData.publicUrl;
+      // Add cache-busting timestamp
+      return `${urlData.publicUrl}?t=${Date.now()}`;
     } catch (error) {
       console.error("Photo upload error:", error);
       return null;
