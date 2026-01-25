@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Scan, Users, BookOpen, BarChart3, Menu, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Scan, Users, BookOpen, BarChart3, Menu, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { path: "/", label: "Take Attendance", icon: Scan },
@@ -12,7 +13,14 @@ const navItems = [
 
 export function Navigation() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   return (
     <nav className="glass-panel border-b border-border/50 sticky top-0 z-50">
@@ -45,6 +53,17 @@ export function Navigation() {
                 </Link>
               );
             })}
+            {user && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 ml-2 text-muted-foreground hover:text-destructive"
+                onClick={handleLogout}
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -79,6 +98,19 @@ export function Navigation() {
                 </Link>
               );
             })}
+            {user && (
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  handleLogout();
+                  setMobileMenuOpen(false);
+                }}
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </Button>
+            )}
           </div>
         )}
       </div>

@@ -93,11 +93,17 @@ export function StudentManager() {
       return null;
     }
 
-    const { data: urlData } = supabase.storage
+    // Create signed URL (valid for 1 year)
+    const { data: signedData, error: signedError } = await supabase.storage
       .from("student-photos")
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 31536000);
 
-    return urlData.publicUrl;
+    if (signedError || !signedData) {
+      console.error("Signed URL error:", signedError);
+      return null;
+    }
+
+    return signedData.signedUrl;
   };
 
   const handleSubmit = async () => {

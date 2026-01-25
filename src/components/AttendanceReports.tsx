@@ -133,20 +133,24 @@ export function AttendanceReports() {
       
       if (uploadError) throw uploadError;
       
-      const { data: urlData } = supabase.storage
+      // Create signed URL (valid for 1 year)
+      const { data: signedData, error: signedError } = await supabase.storage
         .from('session-photos')
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 31536000);
       
-      // Add cache-busting timestamp
-      const photoUrlWithTimestamp = `${urlData.publicUrl}?t=${Date.now()}`;
+      if (signedError || !signedData) {
+        throw new Error("Failed to create signed URL");
+      }
+      
+      const photoUrl = signedData.signedUrl;
       
       // Update session with photo URL
       await supabase
         .from("attendance_sessions")
-        .update({ photo_url: photoUrlWithTimestamp })
+        .update({ photo_url: photoUrl })
         .eq("id", sessionId);
       
-      setSessionPhotoUrl(photoUrlWithTimestamp);
+      setSessionPhotoUrl(photoUrl);
       toast({ title: "Success", description: "Photo uploaded successfully!" });
     } catch (error) {
       console.error("Upload error:", error);
