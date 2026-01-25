@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Upload, Scan, Camera, RefreshCw, CheckCircle, XCircle, Video, VideoOff } from "lucide-react";
+import { Upload, Scan, Camera, RefreshCw, CheckCircle, XCircle, Video, VideoOff, SwitchCamera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,6 +37,7 @@ export function AttendanceScanner() {
   const [attendanceMarked, setAttendanceMarked] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -81,13 +82,19 @@ export function AttendanceScanner() {
     fetchStudents();
   }, [selectedClass, toast]);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async (mode: "environment" | "user" = facingMode) => {
+    // Stop existing stream if any
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } }
       });
       setStream(mediaStream);
       setIsCameraActive(true);
+      setFacingMode(mode);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         // Wait for video to be ready
@@ -105,7 +112,12 @@ export function AttendanceScanner() {
         variant: "destructive"
       });
     }
-  };
+  }, [facingMode, stream, toast]);
+
+  const switchCamera = useCallback(() => {
+    const newMode = facingMode === "environment" ? "user" : "environment";
+    startCamera(newMode);
+  }, [facingMode, startCamera]);
 
   const stopCamera = useCallback(() => {
     if (stream) {
@@ -351,10 +363,14 @@ export function AttendanceScanner() {
               />
               <div className="absolute inset-0 pointer-events-none border-4 border-primary/30 rounded-xl" />
             </div>
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-center flex-wrap">
               <Button variant="glow" size="lg" onClick={capturePhoto} className="gap-2">
                 <Camera className="w-5 h-5" />
                 Capture Photo
+              </Button>
+              <Button variant="outline" size="lg" onClick={switchCamera} className="gap-2">
+                <SwitchCamera className="w-5 h-5" />
+                {facingMode === "environment" ? "Front" : "Back"}
               </Button>
               <Button variant="outline" size="lg" onClick={stopCamera} className="gap-2">
                 <VideoOff className="w-5 h-5" />
@@ -368,7 +384,7 @@ export function AttendanceScanner() {
               <Button 
                 variant="glow" 
                 size="lg" 
-                onClick={startCamera}
+                onClick={() => startCamera()}
                 className="gap-2 flex-1 max-w-[200px]"
               >
                 <Video className="w-5 h-5" />
