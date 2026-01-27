@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Scan, Users, BookOpen, BarChart3, Menu, X, LogOut } from "lucide-react";
+import { Scan, Users, BookOpen, BookMarked, Calendar, BarChart3, Menu, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
-  { path: "/", label: "Take Attendance", icon: Scan },
+  { path: "/", label: "Attendance", icon: Scan },
   { path: "/students", label: "Students", icon: Users },
   { path: "/classes", label: "Classes", icon: BookOpen },
+  { path: "/subjects", label: "Subjects", icon: BookMarked },
+  { path: "/schedule", label: "Schedule", icon: Calendar },
   { path: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
