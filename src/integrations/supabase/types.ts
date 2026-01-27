@@ -88,6 +88,51 @@ export type Database = {
           },
         ]
       }
+      class_subjects: {
+        Row: {
+          class_id: string
+          created_at: string
+          day_of_week: string
+          end_time: string
+          id: string
+          start_time: string
+          subject_id: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          day_of_week: string
+          end_time: string
+          id?: string
+          start_time: string
+          subject_id: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          day_of_week?: string
+          end_time?: string
+          id?: string
+          start_time?: string
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_subjects_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_subjects_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       classes: {
         Row: {
           created_at: string
@@ -179,6 +224,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      subjects: {
+        Row: {
+          code: string | null
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
