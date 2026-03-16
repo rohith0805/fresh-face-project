@@ -1,73 +1,155 @@
-# Welcome to your Lovable project
+# 📸 Face Attendance System
 
-## Project info
+An AI-powered facial recognition attendance management system built with React, TypeScript, and Lovable Cloud (Supabase).
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## ✨ Features
 
-## How can I edit this code?
+- **🔐 Authentication** — Email/password signup & login with protected routes
+- **📷 Face Recognition Attendance** — Upload class photos to automatically detect and mark attendance using AI
+- **👨‍🎓 Student Management** — Add, edit, and delete students with photos, roll numbers, and class assignments
+- **🏫 Class Management** — Create and manage classes with department, section, and semester info
+- **📚 Subject Management** — Manage subjects with codes and link them to classes
+- **📅 Schedule Management** — Assign subjects to classes with day/time scheduling
+- **📊 Attendance Reports** — View and analyze attendance data with filtering and export options
+- **👩‍🏫 Role-Based Access Control** — Admin and teacher roles with class-scoped data access via RLS policies
+- **🌙 Dark/Light Theme** — Beautiful UI with theme support
 
-There are several ways of editing your application.
+## 🛠️ Tech Stack
 
-**Use Lovable**
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18, TypeScript, Vite |
+| **Styling** | Tailwind CSS, shadcn/ui, Lucide Icons |
+| **State Management** | TanStack React Query |
+| **Routing** | React Router v6 |
+| **Forms** | React Hook Form, Zod validation |
+| **Backend** | Lovable Cloud (Supabase) |
+| **Database** | PostgreSQL with Row-Level Security |
+| **Auth** | Supabase Auth (email/password) |
+| **Storage** | Supabase Storage (student & session photos) |
+| **Edge Functions** | Deno-based serverless functions (face recognition) |
+| **AI** | Lovable AI (Gemini) for facial recognition |
+| **Charts** | Recharts |
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## 📁 Project Structure
 
-Changes made via Lovable will be committed automatically to this repo.
+```
+├── src/
+│   ├── components/          # Reusable UI components
+│   │   ├── ui/              # shadcn/ui primitives
+│   │   ├── AttendanceScanner.tsx
+│   │   ├── ClassManager.tsx
+│   │   ├── FaceScanner.tsx
+│   │   ├── Navigation.tsx
+│   │   ├── ProtectedRoute.tsx
+│   │   ├── StudentManager.tsx
+│   │   └── ...
+│   ├── contexts/            # React contexts (AuthContext)
+│   ├── hooks/               # Custom hooks
+│   ├── integrations/        # Supabase client & types (auto-generated)
+│   ├── pages/               # Route pages
+│   │   ├── TakeAttendance.tsx
+│   │   ├── Students.tsx
+│   │   ├── Classes.tsx
+│   │   ├── Subjects.tsx
+│   │   ├── Schedule.tsx
+│   │   ├── Reports.tsx
+│   │   └── Login.tsx
+│   ├── App.tsx
+│   └── main.tsx
+├── supabase/
+│   ├── functions/
+│   │   └── recognize-faces/ # Edge function for AI face recognition
+│   └── config.toml
+└── package.json
+```
 
-**Use your preferred IDE**
+## 🚀 Getting Started (VS Code / Local)
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Prerequisites
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- **Node.js** v18+ — [Install via nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- **npm** (comes with Node.js)
+- **Git**
 
-Follow these steps:
+### 1. Clone the Repository
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+```bash
 git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
+### 2. Install Dependencies
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
+```
+
+### 3. Environment Variables
+
+Create a `.env` file in the project root (this is auto-generated if using Lovable):
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+VITE_SUPABASE_PROJECT_ID=your_project_id
+```
+
+> **Note:** If you cloned from Lovable's GitHub integration, the `.env` file is already configured.
+
+### 4. Start Development Server
+
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The app will be available at **http://localhost:8080**.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 5. Build for Production
 
-**Use GitHub Codespaces**
+```bash
+npm run build
+npm run preview
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 🗄️ Database Schema
 
-## What technologies are used for this project?
+| Table | Description |
+|-------|-------------|
+| `classes` | Class info (name, department, section, semester) |
+| `students` | Student records with photos and class assignments |
+| `subjects` | Subject names and codes |
+| `class_subjects` | Schedule linking subjects to classes with day/time |
+| `attendance_sessions` | Attendance session records per class |
+| `attendance_records` | Individual student attendance per session |
+| `user_roles` | Role-based access (admin, teacher) |
+| `teacher_classes` | Maps teachers to their assigned classes |
 
-This project is built with:
+### Security
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- **Row-Level Security (RLS)** is enabled on all tables
+- Teachers can only access data for their assigned classes
+- Admins have full access
+- `has_role()` and `user_has_class_access()` helper functions prevent RLS recursion
 
-## How can I deploy this project?
+## 📝 Available Scripts
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server on port 8080 |
+| `npm run build` | Production build |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
 
-## Can I connect a custom domain to my Lovable project?
+## 🔧 Troubleshooting
 
-Yes, you can!
+| Issue | Solution |
+|-------|---------|
+| **Blank page after login** | Ensure `.env` variables are correctly set |
+| **Cannot access data** | Admin must assign your account to classes via `teacher_classes` |
+| **Face recognition fails** | Ensure students have uploaded photos and the edge function is deployed |
+| **Port 8080 in use** | Kill the process or change the port in `vite.config.ts` |
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## 📄 License
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+This project is private and proprietary.
