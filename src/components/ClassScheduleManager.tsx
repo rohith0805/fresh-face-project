@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
-import { Plus, Trash2, Clock, Calendar } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Trash2, Clock, Calendar, Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
 
 interface ClassSubject {
   id: string;
