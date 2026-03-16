@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
-import { Plus, Trash2, Clock, Calendar } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Trash2, Clock, Calendar, Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
 
 interface ClassSubject {
   id: string;
@@ -146,6 +147,159 @@ export function ClassScheduleManager() {
     setFormData({ subject_id: "", day_of_week: "", start_time: "", end_time: "" });
   };
 
+  // CSV Import logic
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const csvRowSchema = z.object({
+    subject: z.string().trim().min(1, "Subject is required").max(200),
+    day_of_week: z.string().trim().min(1, "Day is required"),
+    start_time: z.string().regex(/^\d{2}:\d{2}$/, "Start time must be HH:MM"),
+    end_time: z.string().regex(/^\d{2}:\d{2}$/, "End time must be HH:MM"),
+    class_name: z.string().trim().optional(),
+  });
+
+  const parseCSV = (text: string) => {
+    const sep = text.includes(";") ? ";" : ",";
+    const lines = text.trim().split("\n").filter(l => l.trim());
+    if (lines.length < 2) return [];
+    
+    const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
+    return lines.slice(1).map((line, idx) => {
+      const values = line.split(sep).map(v => v.trim());
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { row[h] = values[i] || ""; });
+      return { ...row, _line: idx + 2 };
+    });
+  };
+
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      toast({ title: "Error", description: "File too large (max 1MB)", variant: "destructive" });
+      return;
+    }
+
+    setImporting(true);
+    setImportResults(null);
+    setImportDialogOpen(true);
+
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      
+      if (rows.length === 0) {
+        setImportResults({ success: 0, errors: ["CSV file is empty or has no data rows."] });
+        setImporting(false);
+        return;
+      }
+
+      // Validate required columns
+      const firstRow = rows[0];
+      const hasSubject = "subject" in firstRow || "subject_name" in firstRow || "subject_code" in firstRow;
+      const hasDay = "day_of_week" in firstRow || "day" in firstRow;
+      const hasTime = "start_time" in firstRow && "end_time" in firstRow;
+
+      if (!hasSubject || !hasDay || !hasTime) {
+        setImportResults({ 
+          success: 0, 
+          errors: ["CSV must have columns: subject (or subject_name/subject_code), day_of_week (or day), start_time, end_time. Optionally: class_name."] 
+        });
+        setImporting(false);
+        return;
+      }
+
+      const errors: string[] = [];
+      let success = 0;
+
+      // Build lookup maps
+      const subjectByName = new Map(subjects.map(s => [s.name.toLowerCase(), s]));
+      const subjectByCode = new Map(subjects.filter(s => s.code).map(s => [s.code!.toLowerCase(), s]));
+      const classByName = new Map(classes.map(c => [c.name.toLowerCase(), c]));
+
+      const inserts: { class_id: string; subject_id: string; day_of_week: string; start_time: string; end_time: string }[] = [];
+
+      for (const row of rows) {
+        const lineNum = (row as any)._line;
+        const subjectKey = (row as any).subject || (row as any).subject_name || (row as any).subject_code || "";
+        const dayKey = (row as any).day_of_week || (row as any).day || "";
+        const startTime = (row as any).start_time || "";
+        const endTime = (row as any).end_time || "";
+        const className = (row as any).class_name || "";
+
+        // Validate day
+        const normalizedDay = DAYS_OF_WEEK.find(d => d.toLowerCase() === dayKey.toLowerCase());
+        if (!normalizedDay) {
+          errors.push(`Row ${lineNum}: Invalid day "${dayKey}". Use: ${DAYS_OF_WEEK.join(", ")}`);
+          continue;
+        }
+
+        // Validate times
+        const timeRegex = /^\d{2}:\d{2}$/;
+        if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+          errors.push(`Row ${lineNum}: Invalid time format. Use HH:MM (e.g., 09:00)`);
+          continue;
+        }
+        if (startTime >= endTime) {
+          errors.push(`Row ${lineNum}: End time must be after start time`);
+          continue;
+        }
+
+        // Match subject
+        const matchedSubject = subjectByName.get(subjectKey.toLowerCase()) || subjectByCode.get(subjectKey.toLowerCase());
+        if (!matchedSubject) {
+          errors.push(`Row ${lineNum}: Subject "${subjectKey}" not found. Create it first.`);
+          continue;
+        }
+
+        // Determine class
+        let classId = selectedClass;
+        if (className) {
+          const matchedClass = classByName.get(className.toLowerCase());
+          if (!matchedClass) {
+            errors.push(`Row ${lineNum}: Class "${className}" not found.`);
+            continue;
+          }
+          classId = matchedClass.id;
+        }
+
+        if (!classId) {
+          errors.push(`Row ${lineNum}: No class selected and no class_name column.`);
+          continue;
+        }
+
+        inserts.push({
+          class_id: classId,
+          subject_id: matchedSubject.id,
+          day_of_week: normalizedDay,
+          start_time: startTime,
+          end_time: endTime,
+        });
+      }
+
+      // Batch insert
+      if (inserts.length > 0) {
+        const { error } = await supabase.from("class_subjects").insert(inserts);
+        if (error) {
+          errors.push(`Database error: ${error.message}`);
+        } else {
+          success = inserts.length;
+        }
+      }
+
+      setImportResults({ success, errors });
+      if (success > 0) fetchSchedules();
+    } catch (err: any) {
+      setImportResults({ success: 0, errors: [`Failed to parse CSV: ${err.message}`] });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(":");
     const h = parseInt(hours);
@@ -165,7 +319,7 @@ export function ClassScheduleManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h2 className="text-2xl font-bold">Class Schedule</h2>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <Select value={selectedClass} onValueChange={setSelectedClass}>
             <SelectTrigger className="w-48 bg-secondary/50">
               <SelectValue placeholder="Select class" />
@@ -176,6 +330,71 @@ export function ClassScheduleManager() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* CSV Import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCSVImport}
+          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!selectedClass || subjects.length === 0}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="w-4 h-4" />
+            Import CSV
+          </Button>
+
+          {/* Import Results Dialog */}
+          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+            <DialogContent className="bg-card border-border max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-primary" />
+                  CSV Import Results
+                </DialogTitle>
+              </DialogHeader>
+              {importing ? (
+                <div className="text-center py-8">
+                  <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-muted-foreground">Importing schedule data...</p>
+                </div>
+              ) : importResults ? (
+                <div className="space-y-4 pt-2">
+                  {importResults.success > 0 && (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 text-green-400">
+                      <CheckCircle2 className="w-5 h-5 shrink-0" />
+                      <span className="font-medium">{importResults.success} schedule(s) imported successfully</span>
+                    </div>
+                  )}
+                  {importResults.errors.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="w-5 h-5 shrink-0" />
+                        <span className="font-medium">{importResults.errors.length} issue(s)</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 p-3 rounded-lg bg-destructive/10 text-sm">
+                        {importResults.errors.map((err, i) => (
+                          <p key={i} className="text-destructive">{err}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="p-3 rounded-lg bg-secondary/50 text-sm text-muted-foreground">
+                    <p className="font-medium mb-1">Expected CSV format:</p>
+                    <code className="text-xs block">subject,day_of_week,start_time,end_time,class_name</code>
+                    <code className="text-xs block mt-1">Mathematics,Monday,09:00,10:00,CS-A</code>
+                    <p className="text-xs mt-2">• <strong>class_name</strong> is optional (uses selected class if omitted)</p>
+                    <p className="text-xs">• Subject must match an existing subject name or code</p>
+                  </div>
+                </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
           
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
