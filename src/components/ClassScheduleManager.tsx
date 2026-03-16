@@ -319,7 +319,7 @@ export function ClassScheduleManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h2 className="text-2xl font-bold">Class Schedule</h2>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <Select value={selectedClass} onValueChange={setSelectedClass}>
             <SelectTrigger className="w-48 bg-secondary/50">
               <SelectValue placeholder="Select class" />
@@ -330,6 +330,71 @@ export function ClassScheduleManager() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* CSV Import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCSVImport}
+          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!selectedClass || subjects.length === 0}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="w-4 h-4" />
+            Import CSV
+          </Button>
+
+          {/* Import Results Dialog */}
+          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+            <DialogContent className="bg-card border-border max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-primary" />
+                  CSV Import Results
+                </DialogTitle>
+              </DialogHeader>
+              {importing ? (
+                <div className="text-center py-8">
+                  <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-muted-foreground">Importing schedule data...</p>
+                </div>
+              ) : importResults ? (
+                <div className="space-y-4 pt-2">
+                  {importResults.success > 0 && (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 text-green-400">
+                      <CheckCircle2 className="w-5 h-5 shrink-0" />
+                      <span className="font-medium">{importResults.success} schedule(s) imported successfully</span>
+                    </div>
+                  )}
+                  {importResults.errors.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="w-5 h-5 shrink-0" />
+                        <span className="font-medium">{importResults.errors.length} issue(s)</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 p-3 rounded-lg bg-destructive/10 text-sm">
+                        {importResults.errors.map((err, i) => (
+                          <p key={i} className="text-destructive">{err}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="p-3 rounded-lg bg-secondary/50 text-sm text-muted-foreground">
+                    <p className="font-medium mb-1">Expected CSV format:</p>
+                    <code className="text-xs block">subject,day_of_week,start_time,end_time,class_name</code>
+                    <code className="text-xs block mt-1">Mathematics,Monday,09:00,10:00,CS-A</code>
+                    <p className="text-xs mt-2">• <strong>class_name</strong> is optional (uses selected class if omitted)</p>
+                    <p className="text-xs">• Subject must match an existing subject name or code</p>
+                  </div>
+                </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
           
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
