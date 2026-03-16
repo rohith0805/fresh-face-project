@@ -147,6 +147,159 @@ export function ClassScheduleManager() {
     setFormData({ subject_id: "", day_of_week: "", start_time: "", end_time: "" });
   };
 
+  // CSV Import logic
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const csvRowSchema = z.object({
+    subject: z.string().trim().min(1, "Subject is required").max(200),
+    day_of_week: z.string().trim().min(1, "Day is required"),
+    start_time: z.string().regex(/^\d{2}:\d{2}$/, "Start time must be HH:MM"),
+    end_time: z.string().regex(/^\d{2}:\d{2}$/, "End time must be HH:MM"),
+    class_name: z.string().trim().optional(),
+  });
+
+  const parseCSV = (text: string) => {
+    const sep = text.includes(";") ? ";" : ",";
+    const lines = text.trim().split("\n").filter(l => l.trim());
+    if (lines.length < 2) return [];
+    
+    const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
+    return lines.slice(1).map((line, idx) => {
+      const values = line.split(sep).map(v => v.trim());
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { row[h] = values[i] || ""; });
+      return { ...row, _line: idx + 2 };
+    });
+  };
+
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      toast({ title: "Error", description: "File too large (max 1MB)", variant: "destructive" });
+      return;
+    }
+
+    setImporting(true);
+    setImportResults(null);
+    setImportDialogOpen(true);
+
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      
+      if (rows.length === 0) {
+        setImportResults({ success: 0, errors: ["CSV file is empty or has no data rows."] });
+        setImporting(false);
+        return;
+      }
+
+      // Validate required columns
+      const firstRow = rows[0];
+      const hasSubject = "subject" in firstRow || "subject_name" in firstRow || "subject_code" in firstRow;
+      const hasDay = "day_of_week" in firstRow || "day" in firstRow;
+      const hasTime = "start_time" in firstRow && "end_time" in firstRow;
+
+      if (!hasSubject || !hasDay || !hasTime) {
+        setImportResults({ 
+          success: 0, 
+          errors: ["CSV must have columns: subject (or subject_name/subject_code), day_of_week (or day), start_time, end_time. Optionally: class_name."] 
+        });
+        setImporting(false);
+        return;
+      }
+
+      const errors: string[] = [];
+      let success = 0;
+
+      // Build lookup maps
+      const subjectByName = new Map(subjects.map(s => [s.name.toLowerCase(), s]));
+      const subjectByCode = new Map(subjects.filter(s => s.code).map(s => [s.code!.toLowerCase(), s]));
+      const classByName = new Map(classes.map(c => [c.name.toLowerCase(), c]));
+
+      const inserts: { class_id: string; subject_id: string; day_of_week: string; start_time: string; end_time: string }[] = [];
+
+      for (const row of rows) {
+        const lineNum = (row as any)._line;
+        const subjectKey = (row as any).subject || (row as any).subject_name || (row as any).subject_code || "";
+        const dayKey = (row as any).day_of_week || (row as any).day || "";
+        const startTime = (row as any).start_time || "";
+        const endTime = (row as any).end_time || "";
+        const className = (row as any).class_name || "";
+
+        // Validate day
+        const normalizedDay = DAYS_OF_WEEK.find(d => d.toLowerCase() === dayKey.toLowerCase());
+        if (!normalizedDay) {
+          errors.push(`Row ${lineNum}: Invalid day "${dayKey}". Use: ${DAYS_OF_WEEK.join(", ")}`);
+          continue;
+        }
+
+        // Validate times
+        const timeRegex = /^\d{2}:\d{2}$/;
+        if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+          errors.push(`Row ${lineNum}: Invalid time format. Use HH:MM (e.g., 09:00)`);
+          continue;
+        }
+        if (startTime >= endTime) {
+          errors.push(`Row ${lineNum}: End time must be after start time`);
+          continue;
+        }
+
+        // Match subject
+        const matchedSubject = subjectByName.get(subjectKey.toLowerCase()) || subjectByCode.get(subjectKey.toLowerCase());
+        if (!matchedSubject) {
+          errors.push(`Row ${lineNum}: Subject "${subjectKey}" not found. Create it first.`);
+          continue;
+        }
+
+        // Determine class
+        let classId = selectedClass;
+        if (className) {
+          const matchedClass = classByName.get(className.toLowerCase());
+          if (!matchedClass) {
+            errors.push(`Row ${lineNum}: Class "${className}" not found.`);
+            continue;
+          }
+          classId = matchedClass.id;
+        }
+
+        if (!classId) {
+          errors.push(`Row ${lineNum}: No class selected and no class_name column.`);
+          continue;
+        }
+
+        inserts.push({
+          class_id: classId,
+          subject_id: matchedSubject.id,
+          day_of_week: normalizedDay,
+          start_time: startTime,
+          end_time: endTime,
+        });
+      }
+
+      // Batch insert
+      if (inserts.length > 0) {
+        const { error } = await supabase.from("class_subjects").insert(inserts);
+        if (error) {
+          errors.push(`Database error: ${error.message}`);
+        } else {
+          success = inserts.length;
+        }
+      }
+
+      setImportResults({ success, errors });
+      if (success > 0) fetchSchedules();
+    } catch (err: any) {
+      setImportResults({ success: 0, errors: [`Failed to parse CSV: ${err.message}`] });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(":");
     const h = parseInt(hours);
